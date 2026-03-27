@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Leaf, 
   Bell, 
@@ -18,9 +18,30 @@ import {
   LayoutDashboard,
   LogOut,
   ChevronDown,
-  Car
+  Car,
+  Search,
+  Filter,
+  BarChart3,
+  Users,
+  FileText,
+  Activity,
+  CreditCard,
+  ExternalLink,
+  ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Legend
+} from 'recharts';
 
 type View = 'landing' | 'login' | 'signup' | 'dashboard' | 'admin' | 'register-vehicle';
 
@@ -38,7 +59,12 @@ interface Vehicle {
 }
 
 export default function App() {
-  const [view, setView] = useState<View>('landing');
+  const [view, setView] = useState<View>('admin');
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(true);
+  const [adminTab, setAdminTab] = useState<'overview' | 'users' | 'registrations' | 'wallets' | 'uploads' | 'credits' | 'payouts' | 'history'>('overview');
+  const [adminSearch, setAdminSearch] = useState('');
+
+  const [selectedReg, setSelectedReg] = useState<any>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isVehicleDropdownOpen, setIsVehicleDropdownOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -111,6 +137,44 @@ export default function App() {
     setNewVehicle({ name: '', number: '', type: '2 Wheeler' });
   };
 
+  const [adminLoginData, setAdminLoginData] = useState({ username: '', password: '' });
+  const [adminLoginError, setAdminLoginError] = useState('');
+
+  useEffect(() => {
+    if (view === 'admin') {
+      setAdminLoginData({ username: '', password: '' });
+      setAdminLoginError('');
+    }
+  }, [view]);
+
+  const handleAdminLogin = () => {
+    const user = adminLoginData.username.toLowerCase().trim();
+    const pass = adminLoginData.password.trim();
+    if ((user === 'admin' || user === 'ronithpatel09@gmail.com') && pass === 'admin123') {
+      setIsAdminAuthenticated(true);
+      setAdminLoginError('');
+    } else {
+      setAdminLoginError('Invalid credentials. Hint: admin / admin123');
+    }
+  };
+
+  const handleProcessPayout = (id: number) => {
+    setPayouts(prev => prev.map(p => {
+      if (p.id === id) {
+        return { ...p, status: 'Completed' };
+      }
+      return p;
+    }));
+    
+    const payout = payouts.find(p => p.id === id);
+    if (payout) {
+      setSystemHistory(prev => [
+        { id: Date.now(), action: 'Payout Processed', detail: `₹ ${payout.lastPayout} to ${payout.user}`, user: 'Admin', date: new Date().toLocaleString() },
+        ...prev
+      ]);
+    }
+  };
+
   const handleUploadProof = () => {
     setIsProcessing(true);
     // Simulate AI processing
@@ -136,6 +200,24 @@ export default function App() {
         return v;
       }));
 
+      // Update admin data
+      const newUpload = {
+        id: Date.now(),
+        vehicle: selectedVehicle.name,
+        user: 'Felix Patel', // Mock user
+        km: '12.5 km',
+        credits: 0.012,
+        rupees: 12.50,
+        date: new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        status: 'Approved',
+        screenshot: 'https://picsum.photos/seed/u_new/400/300'
+      };
+      setAllUploads(prev => [newUpload, ...prev]);
+      setSystemHistory(prev => [
+        { id: Date.now(), action: 'Credit Calculation', detail: `+0.012 Credits for Felix Patel`, user: 'System', date: new Date().toLocaleString() },
+        ...prev
+      ]);
+
       setTimeout(() => {
         setUploadSuccess(false);
         setIsUploadModalOpen(false);
@@ -143,9 +225,113 @@ export default function App() {
     }, 3000);
   };
 
-  const pendingRegistrations = [
-    { id: 1, user: 'Rahul Sharma', vehicle: 'Ola S1', number: 'TS09AB1234', date: '25 Mar 2026' },
-    { id: 2, user: 'Priya Verma', vehicle: 'Ather 450X', number: 'KA01XY5678', date: '26 Mar 2026' },
+  const handleApprove = (id: number) => {
+    setAllRegistrations(prev => prev.map(r => r.id === id ? { ...r, status: 'Approved' } : r));
+    const reg = allRegistrations.find(r => r.id === id);
+    if (!reg) return;
+    
+    setAllWallets(prev => [
+      ...prev,
+      { id: `w${Date.now()}`, name: reg.vehicle, credits: 0, rupees: 0, status: 'Active', user: reg.user, number: reg.number }
+    ]);
+    setSystemHistory(prev => [
+      { id: Date.now(), action: 'Vehicle Approved', detail: `${reg.vehicle} (${reg.number}) for ${reg.user}`, user: 'Admin', date: new Date().toLocaleString() },
+      ...prev
+    ]);
+    setSelectedReg(null);
+  };
+
+  const handleReject = (id: number) => {
+    setAllRegistrations(prev => prev.map(r => r.id === id ? { ...r, status: 'Rejected' } : r));
+    const reg = allRegistrations.find(r => r.id === id);
+    if (!reg) return;
+    
+    setSystemHistory(prev => [
+      { id: Date.now(), action: 'Vehicle Rejected', detail: `${reg.vehicle} (${reg.number}) for ${reg.user}`, user: 'Admin', date: new Date().toLocaleString() },
+      ...prev
+    ]);
+    setSelectedReg(null);
+  };
+
+  const [allUsers, setAllUsers] = useState([
+    { id: 1, name: 'Felix Patel', email: 'ronithpatel09@gmail.com', vehicles: 2, joined: '10 Mar 2026', status: 'Active' },
+    { id: 2, name: 'Suresh Kumar', email: 'suresh@example.com', vehicles: 1, joined: '15 Mar 2026', status: 'Active' },
+    { id: 3, name: 'Megha Rao', email: 'megha@example.com', vehicles: 1, joined: '20 Mar 2026', status: 'Active' },
+    { id: 4, name: 'Rahul Sharma', email: 'rahul@example.com', vehicles: 0, joined: '25 Mar 2026', status: 'Active' },
+  ]);
+
+  const [allRegistrations, setAllRegistrations] = useState([
+    { id: 1, user: 'Rahul Sharma', vehicle: 'Ola S1', number: 'TS09AB1234', type: '2 Wheeler', date: '25 Mar 2026', status: 'Pending', screenshot: 'https://picsum.photos/seed/odo1/800/600', odometer: '1,240 km', email: 'rahul@example.com' },
+    { id: 2, user: 'Priya Verma', vehicle: 'Ather 450X', number: 'KA01XY5678', type: '2 Wheeler', date: '26 Mar 2026', status: 'Pending', screenshot: 'https://picsum.photos/seed/odo2/800/600', odometer: '3,450 km', email: 'priya@example.com' },
+    { id: 3, user: 'Amit Singh', vehicle: 'Mahindra Treo', number: 'DL01GH9012', type: '3 Wheeler', date: '27 Mar 2026', status: 'Pending', screenshot: 'https://picsum.photos/seed/odo3/800/600', odometer: '8,900 km', email: 'amit@example.com' },
+    { id: 4, user: 'Felix Patel', vehicle: 'Ola S1 Pro', number: 'TS09AB1234', type: '2 Wheeler', date: '10 Mar 2026', status: 'Approved', screenshot: 'https://picsum.photos/seed/odo4/800/600', odometer: '0 km', email: 'ronithpatel09@gmail.com' },
+  ]);
+
+  const [allWallets, setAllWallets] = useState([
+    { id: 'w1', name: 'Ola S1 Pro', credits: 0.42, rupees: 336, status: 'Active', user: 'Felix Patel', number: 'TS09AB1234' },
+    { id: 'w2', name: 'Ather 450X', credits: 0.85, rupees: 680, status: 'Active', user: 'Felix Patel', number: 'KA01XY5678' },
+    { id: 'w3', name: 'TVS iQube', credits: 45.80, rupees: 36640, status: 'Active', user: 'Suresh Kumar', number: 'TN01AB1122' },
+    { id: 'w4', name: 'Ola S1 Pro', credits: 8.15, rupees: 6520, status: 'Active', user: 'Megha Rao', number: 'MH01CD3344' },
+  ]);
+
+  const [allUploads, setAllUploads] = useState([
+    { id: 1, vehicle: 'Ola S1 Pro', user: 'Felix Patel', km: '12.5 km', credits: 0.012, date: '27 Mar 2026, 10:30 AM', status: 'Approved', screenshot: 'https://picsum.photos/seed/u1/400/300' },
+    { id: 2, vehicle: 'Ather 450X', user: 'Felix Patel', km: '45.0 km', credits: 0.045, date: '26 Mar 2026, 04:15 PM', status: 'Approved', screenshot: 'https://picsum.photos/seed/u2/400/300' },
+    { id: 3, vehicle: 'TVS iQube', user: 'Suresh Kumar', km: '22.8 km', credits: 0.022, date: '26 Mar 2026, 11:00 AM', status: 'Approved', screenshot: 'https://picsum.photos/seed/u3/400/300' },
+  ]);
+
+  const [systemHistory, setSystemHistory] = useState([
+    { id: 1, action: 'Vehicle Approved', detail: 'Ola S1 (TS09AB1234) for Rahul Sharma', user: 'Admin', date: '27 Mar 2026, 09:00 AM' },
+    { id: 2, action: 'Credit Calculation', detail: '+0.012 Credits for Felix Patel', user: 'System', date: '27 Mar 2026, 10:30 AM' },
+    { id: 3, action: 'Payout Processed', detail: '₹ 1,200 to Suresh Kumar', user: 'Admin', date: '26 Mar 2026, 02:00 PM' },
+  ]);
+
+  const [payouts, setPayouts] = useState([
+    { id: 1, user: 'Suresh Kumar', totalPayout: 45000, lastPayout: 1200, status: 'Completed', date: '26 Mar 2026' },
+    { id: 2, user: 'Felix Patel', totalPayout: 1720, lastPayout: 450, status: 'Pending', date: '27 Mar 2026' },
+    { id: 3, user: 'Megha Rao', totalPayout: 8150, lastPayout: 2100, status: 'Completed', date: '25 Mar 2026' },
+  ]);
+
+  const pendingRegistrationsCount = useMemo(() => 
+    allRegistrations.filter(r => r.status === 'Pending').length, 
+  [allRegistrations]);
+
+  const filteredData = useMemo(() => {
+    const s = adminSearch.toLowerCase();
+    switch (adminTab) {
+      case 'users':
+        return allUsers.filter(u => u.name.toLowerCase().includes(s) || u.email.toLowerCase().includes(s));
+      case 'registrations':
+        return allRegistrations.filter(r => {
+          const matchesSearch = r.user.toLowerCase().includes(s) || r.number.toLowerCase().includes(s);
+          const matchesStatus = s === 'pending' || s === 'approved' || s === 'rejected' 
+            ? r.status.toLowerCase() === s 
+            : true;
+          return matchesSearch || matchesStatus;
+        });
+      case 'wallets':
+        return allWallets.filter(w => w.user.toLowerCase().includes(s) || w.number.toLowerCase().includes(s) || w.name.toLowerCase().includes(s));
+      case 'uploads':
+        return allUploads.filter(u => u.user.toLowerCase().includes(s) || u.vehicle.toLowerCase().includes(s));
+      case 'payouts':
+        return payouts.filter(p => p.user.toLowerCase().includes(s));
+      case 'credits':
+        return allUploads.filter(u => u.user.toLowerCase().includes(s) || u.vehicle.toLowerCase().includes(s));
+      case 'history':
+        return systemHistory.filter(h => h.action.toLowerCase().includes(s) || h.detail.toLowerCase().includes(s) || h.user.toLowerCase().includes(s));
+      default:
+        return [];
+    }
+  }, [adminTab, adminSearch, allUsers, allRegistrations, allWallets, allUploads, payouts, systemHistory]);
+
+  const chartData = [
+    { name: '21 Mar', credits: 400, rupees: 32000, km: 4000 },
+    { name: '22 Mar', credits: 600, rupees: 48000, km: 6000 },
+    { name: '23 Mar', credits: 500, rupees: 40000, km: 5000 },
+    { name: '24 Mar', credits: 800, rupees: 64000, km: 8000 },
+    { name: '25 Mar', credits: 1100, rupees: 88000, km: 11000 },
+    { name: '26 Mar', credits: 1000, rupees: 80000, km: 10000 },
+    { name: '27 Mar', credits: 1240, rupees: 99200, km: 12400 },
   ];
 
   // --- UI Components ---
@@ -181,7 +367,10 @@ export default function App() {
             </button>
             <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
               <button 
-                onClick={() => setView('login')}
+                onClick={() => {
+                  setView('login');
+                  setIsAdminAuthenticated(false);
+                }}
                 className="p-2 text-slate-400 hover:text-red-500 transition-colors"
               >
                 <LogOut className="w-5 h-5" />
@@ -208,6 +397,7 @@ export default function App() {
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
         className="w-full max-w-md bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 p-10 border border-slate-100"
       >
         <div className="flex flex-col items-center text-center mb-10">
@@ -239,6 +429,7 @@ export default function App() {
             initial={{ opacity: 0, x: -30 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
             className="space-y-8"
           >
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 rounded-full border border-green-100">
@@ -280,6 +471,7 @@ export default function App() {
             initial={{ opacity: 0, scale: 0.9 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
             className="relative"
           >
             <div className="absolute inset-0 bg-green-600 rounded-[3rem] rotate-3 blur-2xl opacity-10"></div>
@@ -412,6 +604,12 @@ export default function App() {
               <li><a href="#" className="hover:text-white transition-colors">FAQ</a></li>
             </ul>
           </div>
+          <div className="space-y-6">
+            <h5 className="font-bold text-lg">Admin</h5>
+            <ul className="space-y-4 text-slate-400 text-sm">
+              <li><button onClick={() => setView('admin')} className="hover:text-white transition-colors">Admin Dashboard</button></li>
+            </ul>
+          </div>
         </div>
         <div className="max-w-6xl mx-auto px-6 mt-20 pt-8 border-t border-slate-800 text-center text-slate-500 text-xs">
           © 2026 EcoMiles. All rights reserved.
@@ -425,35 +623,41 @@ export default function App() {
   if (view === 'landing') {
     return <LandingPage />;
   }
+
   if (view === 'login') {
     return (
       <AuthLayout 
         title="Welcome Back" 
-        subtitle="Login to track your Eco-savings"
+        subtitle="Sign in to manage your EV earnings"
         linkText="Don't have an account?"
         linkAction={() => setView('signup')}
       >
         <div className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-400 uppercase ml-1">Username</label>
-            <input type="text" placeholder="Enter username" className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all" />
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+            <input 
+              type="email" 
+              placeholder="name@example.com" 
+              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all font-medium"
+            />
           </div>
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-400 uppercase ml-1">Password</label>
-            <input type="password" placeholder="••••••••" className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all" />
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Password</label>
+            <input 
+              type="password" 
+              placeholder="••••••••" 
+              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all font-medium"
+            />
           </div>
           <button 
             onClick={() => setView('dashboard')}
-            className="w-full bg-green-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-green-200 hover:bg-green-700 hover:scale-[1.02] active:scale-[0.98] transition-all mt-4"
+            className="w-full bg-green-600 text-white py-5 rounded-2xl font-bold text-lg shadow-xl shadow-green-100 hover:bg-green-700 transition-all active:scale-[0.98] mt-4"
           >
             Sign In
           </button>
-          <button 
-            onClick={() => setView('admin')}
-            className="w-full bg-slate-800 text-white py-4 rounded-2xl font-bold hover:bg-slate-900 transition-all mt-2"
-          >
-            Admin Login
-          </button>
+          <div className="pt-4 text-center">
+            <button onClick={() => setView('admin')} className="text-xs text-slate-400 font-bold hover:text-slate-600 uppercase tracking-widest">Admin Access</button>
+          </div>
         </div>
       </AuthLayout>
     );
@@ -462,27 +666,39 @@ export default function App() {
   if (view === 'signup') {
     return (
       <AuthLayout 
-        title="Join EcoMiles" 
-        subtitle="Start earning from your EV rides"
+        title="Create Account" 
+        subtitle="Join the green revolution today"
         linkText="Already have an account?"
         linkAction={() => setView('login')}
       >
         <div className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-400 uppercase ml-1">Full Name</label>
-            <input type="text" placeholder="John Doe" className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all" />
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+            <input 
+              type="text" 
+              placeholder="Felix Patel" 
+              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all font-medium"
+            />
           </div>
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-400 uppercase ml-1">Username</label>
-            <input type="text" placeholder="johndoe123" className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all" />
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+            <input 
+              type="email" 
+              placeholder="name@example.com" 
+              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all font-medium"
+            />
           </div>
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-400 uppercase ml-1">Password</label>
-            <input type="password" placeholder="••••••••" className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all" />
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Password</label>
+            <input 
+              type="password" 
+              placeholder="••••••••" 
+              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all font-medium"
+            />
           </div>
           <button 
             onClick={() => setView('register-vehicle')}
-            className="w-full bg-green-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-green-200 hover:bg-green-700 hover:scale-[1.02] transition-all mt-4"
+            className="w-full bg-green-600 text-white py-5 rounded-2xl font-bold text-lg shadow-xl shadow-green-100 hover:bg-green-700 transition-all active:scale-[0.98] mt-4"
           >
             Create Account
           </button>
@@ -493,172 +709,679 @@ export default function App() {
 
   if (view === 'register-vehicle') {
     return (
-      <div className="min-h-screen bg-slate-50 py-12 px-4">
-        <div className="max-w-xl mx-auto">
-          <button onClick={() => setView('signup')} className="flex items-center gap-2 text-slate-500 font-bold mb-8 hover:text-slate-800 transition-colors">
-            <ArrowLeft className="w-5 h-5" /> Back
-          </button>
-          <div className="bg-white rounded-[2.5rem] shadow-xl p-10 border border-slate-100">
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">Register Your Vehicle</h2>
-            <p className="text-slate-500 mb-8">We need these details to verify your EV and create your wallet.</p>
-            
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">Vehicle Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Ola S1" 
-                    value={newVehicle.name}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, name: e.target.value })}
-                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:border-green-500 transition-all" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">Vehicle Number</label>
-                  <input 
-                    type="text" 
-                    placeholder="TS09AB1234" 
-                    value={newVehicle.number}
-                    onChange={(e) => setNewVehicle({ ...newVehicle, number: e.target.value })}
-                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:border-green-500 transition-all" 
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-400 uppercase ml-1">Vehicle Type</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <button 
-                    onClick={() => setNewVehicle({ ...newVehicle, type: '2 Wheeler' })}
-                    className={`p-4 border-2 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${newVehicle.type === '2 Wheeler' ? 'border-green-500 bg-green-50 text-green-700' : 'border-slate-100 bg-slate-50 text-slate-500'}`}
-                  >
-                    <TrendingUp className="w-5 h-5" /> 2 Wheeler
-                  </button>
-                  <button 
-                    onClick={() => setNewVehicle({ ...newVehicle, type: '3 Wheeler' })}
-                    className={`p-4 border-2 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${newVehicle.type === '3 Wheeler' ? 'border-green-500 bg-green-50 text-green-700' : 'border-slate-100 bg-slate-50 text-slate-500'}`}
-                  >
-                    <LayoutDashboard className="w-5 h-5" /> 3 Wheeler
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-400 uppercase ml-1">Vehicle Screenshot</label>
-                <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 flex flex-col items-center justify-center text-slate-400 hover:border-green-400 hover:bg-green-50/30 transition-all cursor-pointer group">
-                  <Upload className="w-10 h-10 mb-2 group-hover:text-green-500 transition-colors" />
-                  <span className="text-sm font-medium">Click to upload or drag & drop</span>
-                  <span className="text-[10px] uppercase font-bold mt-1 opacity-60">PNG, JPG up to 5MB</span>
-                </div>
-              </div>
-
-              <button 
-                onClick={handleAddVehicle}
-                className="w-full bg-green-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-green-200 hover:bg-green-700 transition-all mt-4"
-              >
-                Submit for Approval
-              </button>
-            </div>
+      <AuthLayout 
+        title="Register Vehicle" 
+        subtitle="Add your EV to start earning"
+        linkText="Skip for now?"
+        linkAction={() => setView('dashboard')}
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Vehicle Name</label>
+            <input 
+              type="text" 
+              placeholder="e.g. Ola S1 Pro" 
+              value={newVehicle.name}
+              onChange={(e) => setNewVehicle({...newVehicle, name: e.target.value})}
+              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all font-medium"
+            />
           </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Vehicle Number</label>
+            <input 
+              type="text" 
+              placeholder="e.g. TS09AB1234" 
+              value={newVehicle.number}
+              onChange={(e) => setNewVehicle({...newVehicle, number: e.target.value})}
+              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all font-medium"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Vehicle Type</label>
+            <select 
+              value={newVehicle.type}
+              onChange={(e) => setNewVehicle({...newVehicle, type: e.target.value})}
+              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all font-medium appearance-none"
+            >
+              <option>2 Wheeler</option>
+              <option>3 Wheeler</option>
+              <option>4 Wheeler</option>
+            </select>
+          </div>
+          <button 
+            onClick={handleAddVehicle}
+            className="w-full bg-green-600 text-white py-5 rounded-2xl font-bold text-lg shadow-xl shadow-green-100 hover:bg-green-700 transition-all active:scale-[0.98] mt-4"
+          >
+            Register Vehicle
+          </button>
         </div>
-      </div>
+      </AuthLayout>
     );
   }
 
-  if (view === 'admin') {
+  if (view === 'admin' && !isAdminAuthenticated) {
+    return (
+      <AuthLayout 
+        title="Admin Login" 
+        subtitle="Enter your credentials to access the dashboard"
+        linkText="Go back to home?"
+        linkAction={() => setView('landing')}
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Username</label>
+            <input 
+              type="text" 
+              placeholder="admin" 
+              value={adminLoginData.username}
+              onChange={(e) => setAdminLoginData({...adminLoginData, username: e.target.value})}
+              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all font-medium"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Password</label>
+            <input 
+              type="password" 
+              placeholder="••••••••" 
+              value={adminLoginData.password}
+              onChange={(e) => setAdminLoginData({...adminLoginData, password: e.target.value})}
+              className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all font-medium"
+            />
+          </div>
+          {adminLoginError && <p className="text-red-500 text-xs font-bold text-center">{adminLoginError}</p>}
+          <button 
+            onClick={handleAdminLogin}
+            className="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold text-lg shadow-xl shadow-slate-200 hover:bg-black transition-all active:scale-[0.98] mt-4"
+          >
+            Login as Admin
+          </button>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  if (view === 'admin' && isAdminAuthenticated) {
     return (
       <div className="min-h-screen bg-[#F8FAFC]">
         <Navbar isAdmin />
-        <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800">Admin Control Panel</h1>
-              <p className="text-slate-500">Manage registrations and monitor system credits.</p>
-            </div>
-            <div className="flex gap-3">
-              <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-bold text-slate-600">System Live</span>
+        
+        <div className="flex relative">
+          {/* Sidebar */}
+          <aside className="w-80 bg-[#061c14] h-screen sticky top-16 left-0 hidden md:block overflow-y-auto border-r border-emerald-900/20">
+            <div className="p-8 space-y-10">
+              <div>
+                <h3 className="text-[11px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-6 px-4 flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.8)]"></div>
+                  Registration Lane
+                </h3>
+                <div className="space-y-2">
+                  <button 
+                    onClick={() => setAdminTab('registrations')}
+                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-black text-sm transition-all duration-200 ${adminTab === 'registrations' ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-900/60' : 'text-emerald-100/40 hover:bg-emerald-900/60 hover:text-emerald-50'}`}
+                  >
+                    <FileText className="w-6 h-6" /> Requests
+                    {pendingRegistrationsCount > 0 && (
+                      <span className="ml-auto px-3 py-1 bg-white text-emerald-700 rounded-full text-[10px] font-black">
+                        {pendingRegistrationsCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-[11px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-6 px-4 flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.8)]"></div>
+                  User Data Lane
+                </h3>
+                <div className="space-y-2">
+                  {[
+                    { id: 'overview', icon: BarChart3, label: 'Overview' },
+                    { id: 'users', icon: Users, label: 'Registered Users' },
+                    { id: 'wallets', icon: Wallet, label: 'Vehicle Wallets' },
+                    { id: 'uploads', icon: ImageIcon, label: 'Screenshot Uploads' },
+                    { id: 'credits', icon: TrendingUp, label: 'Credit Monitoring' },
+                    { id: 'payouts', icon: CreditCard, label: 'Payout Monitoring' },
+                    { id: 'history', icon: Activity, label: 'System History' }
+                  ].map((item) => (
+                    <button 
+                      key={item.id}
+                      onClick={() => setAdminTab(item.id as any)}
+                      className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl font-black text-sm transition-all duration-200 ${adminTab === item.id ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-900/60' : 'text-emerald-100/40 hover:bg-emerald-900/60 hover:text-emerald-50'}`}
+                    >
+                      <item.icon className="w-6 h-6" /> {item.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          </aside>
 
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Credits</span>
-              <div className="text-3xl font-bold text-slate-800 mt-1">1,240.50</div>
+          {/* Main Content */}
+          <main className="flex-1 p-10 space-y-10 min-w-0">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+              <div>
+                <h1 className="text-3xl font-black text-slate-900 capitalize tracking-tight">{adminTab} Dashboard</h1>
+                <p className="text-slate-500 font-medium">System-wide monitoring and controls.</p>
+              </div>
+              
+              {adminTab !== 'overview' && (
+                <div className="relative group">
+                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-green-600 transition-colors" />
+                  <input 
+                    type="text" 
+                    placeholder="Search records..." 
+                    value={adminSearch}
+                    onChange={(e) => setAdminSearch(e.target.value)}
+                    className="pl-14 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-green-500/10 focus:border-green-500 transition-all w-full md:w-80 font-medium"
+                  />
+                </div>
+              )}
             </div>
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Total Payouts</span>
-              <div className="text-3xl font-bold text-slate-800 mt-1">₹ 9,92,400</div>
-            </div>
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Active Users</span>
-              <div className="text-3xl font-bold text-slate-800 mt-1">482</div>
-            </div>
-          </div>
 
-          {/* Pending Approvals */}
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">Pending Vehicle Approvals</h2>
-              <span className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-bold uppercase">{pendingRegistrations.length} Pending</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-50/50 text-slate-500 text-xs uppercase tracking-wider">
-                    <th className="px-6 py-4 font-semibold">User</th>
-                    <th className="px-6 py-4 font-semibold">Vehicle Details</th>
-                    <th className="px-6 py-4 font-semibold">Proof</th>
-                    <th className="px-6 py-4 font-semibold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {pendingRegistrations.map((reg) => (
-                    <tr key={reg.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400">
-                            <User className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-slate-800">{reg.user}</div>
-                            <div className="text-[10px] text-slate-400 font-bold uppercase">{reg.date}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-slate-700">{reg.vehicle}</div>
-                        <div className="text-xs text-slate-400 font-mono uppercase">{reg.number}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button className="flex items-center gap-1 text-blue-600 text-xs font-bold hover:underline">
-                          <Eye className="w-3 h-3" /> View Screenshot
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors" title="Reject">
-                            <XCircle className="w-6 h-6" />
-                          </button>
-                          <button className="p-2 text-green-500 hover:bg-green-50 rounded-xl transition-colors" title="Approve">
-                            <CheckCircle2 className="w-6 h-6" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+            {adminTab === 'overview' && (
+              <div className="space-y-10">
+                {/* Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm hover:shadow-xl transition-all">
+                    <div className="flex items-center gap-4 text-slate-400 mb-4">
+                      <div className="p-3 bg-green-50 rounded-2xl text-green-600">
+                        <TrendingUp className="w-6 h-6" />
+                      </div>
+                      <span className="text-xs font-black uppercase tracking-widest">Total Credits</span>
+                    </div>
+                    <div className="text-4xl font-black text-slate-900">
+                      {allWallets.reduce((acc, w) => acc + w.credits, 0).toFixed(2)}
+                    </div>
+                    <div className="inline-flex items-center gap-1 text-xs text-green-600 font-black mt-3 px-2 py-1 bg-green-50 rounded-lg">+12.5%</div>
+                  </div>
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm hover:shadow-xl transition-all">
+                    <div className="flex items-center gap-4 text-slate-400 mb-4">
+                      <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
+                        <CreditCard className="w-6 h-6" />
+                      </div>
+                      <span className="text-xs font-black uppercase tracking-widest">Total Payouts</span>
+                    </div>
+                    <div className="text-4xl font-black text-slate-900">
+                      ₹ {payouts.reduce((acc, p) => acc + p.totalPayout, 0).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-slate-400 font-bold mt-3">{payouts.filter(p => p.status === 'Completed').length} successful payouts</div>
+                  </div>
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm hover:shadow-xl transition-all">
+                    <div className="flex items-center gap-4 text-slate-400 mb-4">
+                      <div className="p-3 bg-purple-50 rounded-2xl text-purple-600">
+                        <Users className="w-6 h-6" />
+                      </div>
+                      <span className="text-xs font-black uppercase tracking-widest">Active Users</span>
+                    </div>
+                    <div className="text-4xl font-black text-slate-900">{allUsers.length}</div>
+                    <div className="text-xs text-slate-400 font-bold mt-3">System-wide users</div>
+                  </div>
+                </div>
+
+                {/* Graph */}
+                <div className="bg-white p-10 rounded-[3rem] border border-slate-200 shadow-sm">
+                  <div className="flex items-center justify-between mb-10">
+                    <h2 className="text-xl font-black text-slate-900 tracking-tight">Growth Overview</h2>
+                    <div className="flex gap-3">
+                      <button className="px-4 py-2 bg-slate-900 text-white text-xs font-black rounded-xl shadow-lg">7 Days</button>
+                      <button className="px-4 py-2 text-slate-400 text-xs font-black rounded-xl hover:bg-slate-50">30 Days</button>
+                    </div>
+                  </div>
+                  <div className="h-[400px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chartData}>
+                        <defs>
+                          <linearGradient id="colorCredits" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#16a34a" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#16a34a" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12, fontWeight: 600}} dy={15} />
+                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12, fontWeight: 600}} />
+                        <Tooltip 
+                          contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.15)', padding: '20px' }}
+                        />
+                        <Area type="monotone" name="Credits" dataKey="credits" stroke="#16a34a" strokeWidth={4} fillOpacity={1} fill="url(#colorCredits)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {adminTab === 'users' && (
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-[11px] font-black uppercase tracking-widest">
+                        <th className="px-8 py-6">User</th>
+                        <th className="px-8 py-6">Email</th>
+                        <th className="px-8 py-6">Vehicles</th>
+                        <th className="px-8 py-6">Joined</th>
+                        <th className="px-8 py-6">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredData.map((user: any) => (
+                        <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 bg-slate-100 rounded-xl overflow-hidden border-2 border-slate-100">
+                                <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`} alt="Avatar" />
+                              </div>
+                              <div className="text-sm font-black text-slate-800">{user.name}</div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-6 text-sm text-slate-600 font-medium">{user.email}</td>
+                          <td className="px-8 py-6 text-sm font-black text-slate-800">{user.vehicles}</td>
+                          <td className="px-8 py-6 text-xs text-slate-400 font-bold">{user.joined}</td>
+                          <td className="px-8 py-6">
+                            <span className="px-3 py-1 bg-green-50 text-green-600 rounded-lg text-[10px] font-black uppercase">{user.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {adminTab === 'registrations' && (
+              <div className="space-y-8">
+                <div className="flex items-center gap-4 bg-white p-3 rounded-[1.5rem] border border-slate-200 w-fit shadow-sm">
+                  {['All', 'Pending', 'Approved', 'Rejected'].map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => setAdminSearch(status === 'All' ? '' : status)}
+                      className={`px-8 py-3 rounded-xl text-xs font-black transition-all ${
+                        (adminSearch.toLowerCase() === status.toLowerCase() || (status === 'All' && adminSearch === '')) 
+                          ? 'bg-green-600 text-white shadow-lg shadow-green-100 scale-105' 
+                          : 'text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      {status}
+                    </button>
                   ))}
-                </tbody>
-              </table>
+                </div>
+
+                <div className="bg-white rounded-[3rem] border border-slate-200 overflow-hidden shadow-sm">
+                  <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
+                    <h2 className="text-xl font-black text-slate-900 tracking-tight">Vehicle Registration Requests</h2>
+                    <div className="flex gap-3">
+                      <span className="bg-orange-100 text-orange-600 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border border-orange-200">
+                        {allRegistrations.filter(r => r.status === 'Pending').length} Pending
+                      </span>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 text-[11px] font-black uppercase tracking-widest">
+                          <th className="px-8 py-6">User</th>
+                          <th className="px-8 py-6">Vehicle Details</th>
+                          <th className="px-8 py-6">Type</th>
+                          <th className="px-8 py-6">Status</th>
+                          <th className="px-8 py-6 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredData.map((reg: any) => (
+                          <tr key={reg.id} className="hover:bg-slate-50/50 transition-colors group">
+                            <td className="px-8 py-6">
+                              <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 border-2 border-slate-100">
+                                  <User className="w-6 h-6" />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-black text-slate-800">{reg.user}</div>
+                                  <div className="text-xs text-slate-400 font-medium">{reg.email}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-8 py-6">
+                              <div className="text-sm font-black text-slate-800">{reg.vehicle}</div>
+                              <div className="text-[10px] text-slate-400 font-mono font-bold uppercase tracking-widest mt-1">{reg.number}</div>
+                            </td>
+                            <td className="px-8 py-6">
+                              <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${reg.type === '2 Wheeler' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                                {reg.type}
+                              </span>
+                            </td>
+                            <td className="px-8 py-6">
+                              <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${reg.status === 'Approved' ? 'bg-green-50 text-green-600' : reg.status === 'Rejected' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'}`}>
+                                {reg.status}
+                              </span>
+                            </td>
+                            <td className="px-8 py-6 text-right">
+                              <div className="flex items-center justify-end gap-3">
+                                <button 
+                                  onClick={() => setSelectedReg(reg)}
+                                  className="flex items-center gap-2 px-4 py-2.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all text-[10px] font-black uppercase tracking-wider"
+                                >
+                                  <Eye className="w-4 h-4" /> Details
+                                </button>
+                                {reg.status === 'Pending' && (
+                                  <>
+                                    <button 
+                                      onClick={() => handleReject(reg.id)}
+                                      className="flex items-center gap-2 px-4 py-2.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-all text-[10px] font-black uppercase tracking-wider"
+                                    >
+                                      <XCircle className="w-4 h-4" /> Reject
+                                    </button>
+                                    <button 
+                                      onClick={() => handleApprove(reg.id)}
+                                      className="flex items-center gap-2 px-4 py-2.5 text-white bg-green-600 hover:bg-green-700 rounded-xl transition-all text-[10px] font-black uppercase tracking-wider shadow-lg shadow-green-100"
+                                    >
+                                      <CheckCircle2 className="w-4 h-4" /> Approve
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {adminTab === 'wallets' && (
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-[11px] font-black uppercase tracking-widest">
+                        <th className="px-8 py-6">Vehicle</th>
+                        <th className="px-8 py-6">User</th>
+                        <th className="px-8 py-6">Credits</th>
+                        <th className="px-8 py-6">Value (₹)</th>
+                        <th className="px-8 py-6">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredData.map((wallet: any) => (
+                        <tr key={wallet.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-8 py-6">
+                            <div className="text-sm font-black text-slate-800">{wallet.name}</div>
+                            <div className="text-[10px] text-slate-400 font-mono font-bold uppercase">{wallet.number}</div>
+                          </td>
+                          <td className="px-8 py-6 text-sm text-slate-600 font-medium">{wallet.user}</td>
+                          <td className="px-8 py-6 text-sm font-black text-green-600">{wallet.credits}</td>
+                          <td className="px-8 py-6 text-sm font-black text-slate-800">₹ {wallet.rupees}</td>
+                          <td className="px-8 py-6">
+                            <span className="px-3 py-1 bg-green-50 text-green-600 rounded-lg text-[10px] font-black uppercase">{wallet.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {adminTab === 'uploads' && (
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-[11px] font-black uppercase tracking-widest">
+                        <th className="px-8 py-6">Proof</th>
+                        <th className="px-8 py-6">Vehicle / User</th>
+                        <th className="px-8 py-6">Distance</th>
+                        <th className="px-8 py-6">Credits</th>
+                        <th className="px-8 py-6">Date</th>
+                        <th className="px-8 py-6">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredData.map((upload: any) => (
+                        <tr key={upload.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-8 py-6">
+                            <div className="w-16 h-12 bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
+                              <img src={upload.screenshot} alt="Proof" className="w-full h-full object-cover" />
+                            </div>
+                          </td>
+                          <td className="px-8 py-6">
+                            <div className="text-sm font-black text-slate-800">{upload.vehicle}</div>
+                            <div className="text-xs text-slate-400 font-medium">{upload.user}</div>
+                          </td>
+                          <td className="px-8 py-6 text-sm font-black text-slate-800">{upload.km}</td>
+                          <td className="px-8 py-6 text-sm font-black text-green-600">+{upload.credits}</td>
+                          <td className="px-8 py-6 text-xs text-slate-400 font-bold">{upload.date}</td>
+                          <td className="px-8 py-6">
+                            <span className="px-3 py-1 bg-green-50 text-green-600 rounded-lg text-[10px] font-black uppercase">{upload.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {adminTab === 'credits' && (
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6">Credit Distribution</h3>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                          <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                          <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.1)' }} />
+                          <Bar dataKey="credits" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                  <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6">Recent Credit Logs</h3>
+                    <div className="space-y-4">
+                      {allUploads.slice(0, 5).map((u: any) => (
+                        <div key={u.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                          <div className="flex items-center gap-3">
+                            <div className="bg-green-100 p-2 rounded-xl text-green-600">
+                              <TrendingUp className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-black text-slate-800">{u.user}</div>
+                              <div className="text-[10px] text-slate-400 font-medium">{u.vehicle}</div>
+                            </div>
+                          </div>
+                          <div className="text-sm font-black text-green-600">+{u.credits}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {adminTab === 'payouts' && (
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-[11px] font-black uppercase tracking-widest">
+                        <th className="px-8 py-6">User</th>
+                        <th className="px-8 py-6">Total Payout</th>
+                        <th className="px-8 py-6">Last Payout</th>
+                        <th className="px-8 py-6">Date</th>
+                        <th className="px-8 py-6">Status</th>
+                        <th className="px-8 py-6 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredData.map((payout: any) => (
+                        <tr key={payout.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-8 py-6">
+                            <div className="text-sm font-black text-slate-800">{payout.user}</div>
+                          </td>
+                          <td className="px-8 py-6 text-sm font-black text-slate-800">₹ {payout.totalPayout.toLocaleString()}</td>
+                          <td className="px-8 py-6 text-sm font-black text-green-600">₹ {payout.lastPayout.toLocaleString()}</td>
+                          <td className="px-8 py-6 text-xs text-slate-400 font-bold">{payout.date}</td>
+                          <td className="px-8 py-6">
+                            <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${payout.status === 'Completed' ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'}`}>
+                              {payout.status}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            {payout.status === 'Pending' && (
+                              <button 
+                                onClick={() => handleProcessPayout(payout.id)}
+                                className="px-4 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-wider rounded-xl hover:bg-black transition-all"
+                              >
+                                Process
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {adminTab === 'history' && (
+              <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-[11px] font-black uppercase tracking-widest">
+                        <th className="px-8 py-6">Action</th>
+                        <th className="px-8 py-6">Detail</th>
+                        <th className="px-8 py-6">User</th>
+                        <th className="px-8 py-6">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredData.map((history: any) => (
+                        <tr key={history.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-8 py-6">
+                            <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${
+                              history.action.includes('Approved') ? 'bg-green-50 text-green-600' : 
+                              history.action.includes('Rejected') ? 'bg-red-50 text-red-600' : 
+                              history.action.includes('Payout') ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {history.action}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6 text-sm text-slate-600 font-medium">{history.detail}</td>
+                          <td className="px-8 py-6 text-sm font-black text-slate-800">{history.user}</td>
+                          <td className="px-8 py-6 text-xs text-slate-400 font-bold">{history.date}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
+
+        {/* Admin Modals */}
+        <AnimatePresence>
+          {selectedReg && (
+            <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setSelectedReg(null)}
+                className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
+              ></motion.div>
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 30 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 30 }}
+                className="relative w-full max-w-4xl bg-white rounded-[3rem] shadow-2xl overflow-hidden"
+              >
+                <div className="grid md:grid-cols-2">
+                  <div className="p-12 space-y-8">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-3xl font-black text-slate-900 tracking-tight">Request Details</h3>
+                      <button onClick={() => setSelectedReg(null)} className="p-3 hover:bg-slate-100 rounded-full transition-colors">
+                        <XCircle className="w-8 h-8 text-slate-300" />
+                      </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-8">
+                      <div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">User</div>
+                        <div className="text-lg font-black text-slate-800">{selectedReg.user}</div>
+                        <div className="text-sm text-slate-500 font-medium">{selectedReg.email}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Vehicle</div>
+                        <div className="text-lg font-black text-slate-800">{selectedReg.vehicle}</div>
+                        <div className="text-sm font-mono text-slate-500 font-bold uppercase">{selectedReg.number}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Type</div>
+                        <div className="text-sm font-black text-slate-800">{selectedReg.type}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Odometer</div>
+                        <div className="text-sm font-black text-slate-800">{selectedReg.odometer}</div>
+                      </div>
+                    </div>
+
+                    <div className="pt-8 border-t border-slate-100 flex gap-4">
+                      {selectedReg.status === 'Pending' ? (
+                        <>
+                          <button 
+                            onClick={() => handleReject(selectedReg.id)}
+                            className="flex-1 bg-slate-100 text-slate-600 py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-all"
+                          >
+                            Reject
+                          </button>
+                          <button 
+                            onClick={() => handleApprove(selectedReg.id)}
+                            className="flex-2 bg-green-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest hover:bg-green-700 shadow-2xl shadow-green-100 transition-all"
+                          >
+                            Approve Vehicle
+                          </button>
+                        </>
+                      ) : (
+                        <div className={`w-full py-5 rounded-2xl font-black text-center uppercase tracking-widest ${selectedReg.status === 'Approved' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                          {selectedReg.status}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="bg-slate-100 relative group overflow-hidden">
+                    <img 
+                      src={selectedReg.screenshot} 
+                      alt="Odometer Proof" 
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="bg-white/20 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/30 text-white font-black uppercase tracking-widest text-xs">
+                        Proof Screenshot
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
             </div>
-          </div>
-        </main>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
+
+
+
+
+
 
   // Default User Dashboard
   return (
@@ -734,6 +1457,7 @@ export default function App() {
           key={selectedVehicleId}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
           className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-green-500 via-green-600 to-emerald-700 p-10 text-white shadow-xl shadow-green-200"
         >
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl"></div>
@@ -868,6 +1592,7 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
               onClick={() => setIsUploadModalOpen(false)}
               className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
             ></motion.div>
@@ -875,6 +1600,7 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
               className="relative w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl p-10 overflow-hidden"
             >
               <div className="flex items-center justify-between mb-8">
@@ -937,6 +1663,7 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
               onClick={() => setIsProfileModalOpen(false)}
               className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
             ></motion.div>
@@ -944,6 +1671,7 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
               className="relative w-full max-w-2xl bg-white rounded-[2.5rem] shadow-2xl p-10 overflow-hidden"
             >
               <div className="flex items-center justify-between mb-8">
