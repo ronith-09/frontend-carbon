@@ -1,0 +1,7 @@
+{
+  "name": "EcoMiles",
+  "description": "EV mileage tracking and carbon credit rewards platform with OCR-based verification.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
